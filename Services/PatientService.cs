@@ -71,7 +71,6 @@ public class PatientService : IDisposable
                                    "Regular flossing required.", "Family history of oral cancer.", "Good oral hygiene habits.", "Recovering from oral surgery.",
                                    "Requires assistance with brushing technique." };
         
-        // Create 50 patients
         for (int i = 1; i <= 50; i++)
         {
             // Calculate a random birth date between 18 and 90 years ago
@@ -96,10 +95,10 @@ public class PatientService : IDisposable
             // Construct phone number
             string phone = $"{random.Next(200, 999)}-{random.Next(100, 999)}-{random.Next(1000, 9999)}";
             
-            // Create and insert patient
+            // Create and insert patient with GUID
             _patients.Insert(new Patient
             {
-                Id = i,
+                // Guid.NewGuid() will be called automatically by the constructor
                 FirstName = firstNames[random.Next(firstNames.Length)],
                 LastName = lastNames[random.Next(lastNames.Length)],
                 DateOfBirth = birthDate,
@@ -115,15 +114,35 @@ public class PatientService : IDisposable
     
     public IEnumerable<Patient> GetAllPatients() => _patients.FindAll().ToList();
 
-    public Patient? GetPatient(int id) => _patients.FindById(id);
+    public IEnumerable<Patient> SearchPatients(string searchTerm)
+{
+    // If searchTerm is a valid GUID, search by ID
+    if (Guid.TryParse(searchTerm, out Guid id))
+    {
+        var patient = _patients.FindById(id);
+        return patient != null ? new List<Patient> { patient } : Enumerable.Empty<Patient>();
+    }
+    
+    // Otherwise, search by name (case insensitive)
+    searchTerm = searchTerm.ToLowerInvariant();
+    
+    return _patients.FindAll()
+        .Where(p => 
+            p.FirstName.ToLowerInvariant().Contains(searchTerm) || 
+            p.LastName.ToLowerInvariant().Contains(searchTerm) ||
+            $"{p.FirstName} {p.LastName}".ToLowerInvariant().Contains(searchTerm)
+        )
+        .ToList();
+}
+
+    public Patient? GetPatient(Guid id) => _patients.FindById(id);
 
     public Patient AddPatient(Patient patient)
     {
-        // Let LiteDB handle the auto-increment if id is 0
-        if (patient.Id == 0)
+        // Ensure the patient has a GUID
+        if (patient.Id == Guid.Empty)
         {
-            var maxId = _patients.FindAll().Any() ? _patients.FindAll().Max(p => p.Id) : 0;
-            patient.Id = maxId + 1;
+            patient.Id = Guid.NewGuid();
         }
         
         _patients.Insert(patient);
@@ -140,7 +159,7 @@ public class PatientService : IDisposable
         return patient;
     }
 
-    public bool DeletePatient(int id)
+    public bool DeletePatient(Guid id)
     {
         return _patients.Delete(id);
     }
