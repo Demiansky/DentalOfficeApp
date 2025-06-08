@@ -1,0 +1,221 @@
+using DentalPatientApp.Data;
+using DentalPatientApp.Models;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace DentalPatientApp.Services;
+
+public class PatientRecordService
+{
+    private readonly DentalDbContext _context;
+    private readonly PatientService _patientService;
+
+    public PatientRecordService(DentalDbContext context, PatientService patientService)
+    {
+        _context = context;
+        _patientService = patientService;
+
+        // Check if we need to initialize sample data
+         try 
+        {
+            Console.WriteLine("About to initialize sample data...");
+            InitializeSampleDataAsync().Wait();
+            Console.WriteLine("Sample data initialization complete or skipped");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR initializing sample data: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            // Consider still allowing the service to function even if initialization fails
+        }
+    }
+
+    private async Task InitializeSampleDataAsync()
+    {
+        Console.WriteLine("Starting sample data initialization...");
+
+        // Skip if we already have records
+        bool hasRecords = await _context.PatientRecords.AnyAsync();
+        Console.WriteLine($"Database already has records: {hasRecords}");
+        if (hasRecords)
+            return;
+
+        // Get all patients from LiteDB
+        var patients = _patientService.GetAllPatients().ToList();
+        Console.WriteLine($"Found {patients.Count} patients in LiteDB");
+        if (!patients.Any())
+            return;
+
+        // For sample data generation
+        var random = new Random();
+
+        // Common dental procedures
+        var procedures = new[] {
+            "Regular Checkup", "Teeth Cleaning", "Fluoride Treatment",
+            "Dental X-Ray", "Cavity Filling", "Root Canal",
+            "Crown Placement", "Bridge Work", "Tooth Extraction",
+            "Wisdom Tooth Removal", "Gum Treatment", "Teeth Whitening"
+        };
+
+        // Dentist names
+        var dentists = new[] {
+            "Dr. Sarah Johnson", "Dr. Michael Chen", "Dr. Emily Rodriguez",
+            "Dr. David Kim", "Dr. Lisa Patel", "Dr. Robert Williams",
+            "Dr. Jessica Martinez", "Dr. Thomas Anderson", "Dr. Sophia Garcia"
+        };
+
+        // Treatment descriptions
+        var treatments = new[] {
+            "Complete cleaning with fluoride application",
+            "Filling applied to affected area",
+            "Pain management and antibiotics prescribed",
+            "Crown fitted and adjusted",
+            "X-rays taken of full mouth",
+            "Root canal performed on tooth #",
+            "Examination revealed no major issues",
+            "Gums treated for mild inflammation",
+            "Custom night guard provided",
+            "Teeth whitening procedure completed",
+            "Referred to specialist for further evaluation",
+            "Deep cleaning of all quadrants"
+        };
+
+        // Sample records for each patient
+        var records = new List<PatientRecord>();
+
+        foreach (var patient in patients)
+        {
+            // Each patient gets 1-5 records
+            int recordCount = random.Next(1, 6);
+
+            // Create records spread over the past 3 years
+            for (int i = 0; i < recordCount; i++)
+            {
+                var recordDate = DateTime.Now.AddDays(-random.Next(1, 1095)); // Up to 3 years in the past
+                var toothNum = random.Next(1, 32);
+
+                var record = new PatientRecord
+                {
+                    PatientId = patient.Id,
+                    RecordDate = recordDate,
+                    RecordType = procedures[random.Next(procedures.Length)],
+                    Description = $"Patient visit on {recordDate.ToString("MM/dd/yyyy")}",
+                    Treatment = $"{treatments[random.Next(treatments.Length)]} {(random.Next(0, 2) == 0 ? toothNum.ToString() : "")}",
+                    Diagnosis = i % 3 == 0 ? "Healthy teeth and gums" :
+                               i % 3 == 1 ? $"Small cavity on tooth #{toothNum}" :
+                               "Mild gingivitis",
+                    Prescription = i % 4 == 0 ? "None" :
+                                  i % 4 == 1 ? "Antibiotics for 7 days" :
+                                  i % 4 == 2 ? "Pain medication as needed" :
+                                  "Medicated mouth rinse twice daily",
+                    Notes = $"Patient {(random.Next(0, 2) == 0 ? "reported" : "did not report")} sensitivity. " +
+                           $"Follow up {(random.Next(0, 2) == 0 ? "scheduled" : "recommended")} in {random.Next(1, 12)} months.",
+                    DentistName = dentists[random.Next(dentists.Length)]
+                };
+
+                records.Add(record);
+            }
+        }
+
+        // Add all records in a batch
+        await _context.PatientRecords.AddRangeAsync(records);
+        await _context.SaveChangesAsync();
+
+        Console.WriteLine($"Added {records.Count} sample dental records for {patients.Count} patients");
+    }
+
+    //////////////////////////////
+    /// Patient Record Methods ///
+    //////////////////////////////
+    public async Task<PatientRecord> AddRecordAsync(PatientRecord record)
+    {
+        // Verify that the patient exists before adding a record
+        var patient = _patientService.GetPatient(record.PatientId);
+        if (patient == null)
+        {
+            throw new KeyNotFoundException($"Patient with ID {record.PatientId} not found");
+        }
+
+        await _context.PatientRecords.AddAsync(record);
+        await _context.SaveChangesAsync();
+        return record;
+    }
+
+    public async Task<List<PatientRecord>> GetPatientRecordsAsync(Guid patientId)
+    {
+        return await _context.PatientRecords
+            .Where(r => r.PatientId == patientId)
+            .OrderByDescending(r => r.RecordDate)
+            .ToListAsync();
+    }
+
+    public async Task<PatientRecord?> GetRecordAsync(int recordId)
+    {
+        return await _context.PatientRecords.FindAsync(recordId);
+    }
+
+    public async Task<PatientRecord?> UpdateRecordAsync(PatientRecord record)
+    {
+        var existingRecord = await _context.PatientRecords.FindAsync(record.Id);
+        if (existingRecord == null)
+        {
+            return null;
+        }
+
+        // Update fields
+        existingRecord.RecordType = record.RecordType;
+        existingRecord.Description = record.Description;
+        existingRecord.Treatment = record.Treatment;
+        existingRecord.Diagnosis = record.Diagnosis;
+        existingRecord.Prescription = record.Prescription;
+        existingRecord.Notes = record.Notes;
+        existingRecord.DentistName = record.DentistName;
+
+        await _context.SaveChangesAsync();
+        return existingRecord;
+    }
+
+    public async Task<bool> DeleteRecordAsync(int recordId)
+    {
+        var record = await _context.PatientRecords.FindAsync(recordId);
+        if (record == null)
+        {
+            return false;
+        }
+
+        _context.PatientRecords.Remove(record);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+    
+    public async Task<IEnumerable<dynamic>> GetPatientRecordsWithDetailsAsync(Guid patientId)
+    {
+        // Get patient from LiteDB
+        var patient = _patientService.GetPatient(patientId);
+        if (patient == null)
+            return Enumerable.Empty<dynamic>();
+
+        // Get records from PostgreSQL
+        var records = await _context.PatientRecords
+            .Where(r => r.PatientId == patientId)
+            .OrderByDescending(r => r.RecordDate)
+            .ToListAsync();
+
+        // Combine the data on-the-fly
+        return records.Select(record => new
+        {
+            Record = record,
+            Patient = new
+            {
+                patient.Id,
+                patient.FirstName,
+                patient.LastName,
+                patient.DateOfBirth,
+                // Include only the patient fields you need
+            }
+        });
+    }
+}
