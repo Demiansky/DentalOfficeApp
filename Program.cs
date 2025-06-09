@@ -3,6 +3,7 @@ using DentalPatientApp.Services;
 using Microsoft.OpenApi.Models;
 using DentalPatientApp.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Any;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -184,10 +185,21 @@ app.MapGet("/records/{recordId}", async (int recordId, PatientRecordService reco
 });
 
 /// Add a new record ///
-app.MapPost("/patients/{patientId}/records", async (Guid patientId, PatientRecord record, PatientRecordService recordService) =>
+app.MapPost("/patients/{patientId}/records", async (Guid patientId, CreatePatientRecordRequest requestDto, PatientRecordService recordService) =>
 {
-    // Set the patient ID from the route
-    record.PatientId = patientId;
+    // Create a new PatientRecord from the DTO
+    var record = new PatientRecord
+    {
+        PatientId = patientId,  // Set from URL path parameter
+        RecordDate = requestDto.RecordDate,
+        RecordType = requestDto.RecordType,
+        Description = requestDto.Description,
+        Treatment = requestDto.Treatment,
+        Diagnosis = requestDto.Diagnosis,
+        Prescription = requestDto.Prescription,
+        Notes = requestDto.Notes,
+        DentistName = requestDto.DentistName
+    };
     
     try
     {
@@ -203,7 +215,25 @@ app.MapPost("/patients/{patientId}/records", async (Guid patientId, PatientRecor
 .WithOpenApi(operation => {
     operation.Summary = "Add Patient Record";
     operation.Description = "Creates a new dental record for a specific patient";
+    operation.Parameters[0].Description = "ID of the patient to create a record for";
+    operation.Parameters[0].Required = true;
+    operation.RequestBody.Required = true;
+    operation.RequestBody.Description = "Dental record details (patientId will be set automatically from URL)";
     operation.Tags = new List<OpenApiTag> { new() { Name = "Patient Records" } };
+    
+    // an example that shows exactly what fields to send
+    operation.RequestBody.Content["application/json"].Example = new OpenApiObject
+    {
+        ["recordDate"] = new OpenApiString(DateTime.UtcNow.ToString("o")),
+        ["recordType"] = new OpenApiString("Regular Checkup"),
+        ["description"] = new OpenApiString("Routine dental examination"),
+        ["treatment"] = new OpenApiString("Teeth cleaning and polishing"),
+        ["diagnosis"] = new OpenApiString("Healthy teeth and gums"),
+        ["prescription"] = new OpenApiString("None"),
+        ["notes"] = new OpenApiString("Patient should continue regular brushing and flossing"),
+        ["dentistName"] = new OpenApiString("Dr. Smith")
+    };
+    
     return operation;
 });
 

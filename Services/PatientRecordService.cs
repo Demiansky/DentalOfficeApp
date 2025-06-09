@@ -35,96 +35,115 @@ public class PatientRecordService
 
     private async Task InitializeSampleDataAsync()
     {
-        Console.WriteLine("Starting sample data initialization...");
-
         // Skip if we already have records
         bool hasRecords = await _context.PatientRecords.AnyAsync();
         Console.WriteLine($"Database already has records: {hasRecords}");
         if (hasRecords)
             return;
-
+    
         // Get all patients from LiteDB
         var patients = _patientService.GetAllPatients().ToList();
         Console.WriteLine($"Found {patients.Count} patients in LiteDB");
         if (!patients.Any())
             return;
-
+            
         // For sample data generation
         var random = new Random();
-
-        // Common dental procedures
-        var procedures = new[] {
-            "Regular Checkup", "Teeth Cleaning", "Fluoride Treatment",
-            "Dental X-Ray", "Cavity Filling", "Root Canal",
-            "Crown Placement", "Bridge Work", "Tooth Extraction",
-            "Wisdom Tooth Removal", "Gum Treatment", "Teeth Whitening"
-        };
-
-        // Dentist names
-        var dentists = new[] {
-            "Dr. Sarah Johnson", "Dr. Michael Chen", "Dr. Emily Rodriguez",
-            "Dr. David Kim", "Dr. Lisa Patel", "Dr. Robert Williams",
-            "Dr. Jessica Martinez", "Dr. Thomas Anderson", "Dr. Sophia Garcia"
-        };
-
-        // Treatment descriptions
-        var treatments = new[] {
-            "Complete cleaning with fluoride application",
-            "Filling applied to affected area",
-            "Pain management and antibiotics prescribed",
-            "Crown fitted and adjusted",
-            "X-rays taken of full mouth",
-            "Root canal performed on tooth #",
-            "Examination revealed no major issues",
-            "Gums treated for mild inflammation",
-            "Custom night guard provided",
-            "Teeth whitening procedure completed",
-            "Referred to specialist for further evaluation",
-            "Deep cleaning of all quadrants"
-        };
-
-        // Sample records for each patient
-        var records = new List<PatientRecord>();
-
-        foreach (var patient in patients)
+        
+        // Common dental procedures, dentists, treatments
+        var procedures = new[] { "Regular Checkup", "Teeth Cleaning", "Fluoride Treatment", 
+            "Dental X-Ray", "Cavity Filling", "Root Canal", "Crown Placement", "Bridge Work", 
+            "Tooth Extraction", "Wisdom Tooth Removal", "Gum Treatment", "Teeth Whitening" };
+            
+        var dentists = new[] { "Dr. Sarah Johnson", "Dr. Michael Chen", "Dr. Emily Rodriguez", 
+            "Dr. David Kim", "Dr. Lisa Patel", "Dr. Robert Williams" };
+            
+        var treatments = new[] { "Complete cleaning with fluoride application",
+            "Filling applied to affected area", "Pain management and antibiotics prescribed",
+            "Crown fitted and adjusted", "X-rays taken of full mouth", "Root canal performed on tooth #" };
+    
+        int successCount = 0;
+        int failCount = 0;
+        
+        // Process patients in smaller batches (no more than 10 patients at a time)
+        foreach (var patientBatch in patients.Chunk(10))
         {
-            // Each patient gets 1-5 records
-            int recordCount = random.Next(1, 6);
-
-            // Create records spread over the past 3 years
-            for (int i = 0; i < recordCount; i++)
+            // Create a smaller batch of records
+            var batchRecords = new List<PatientRecord>();
+            
+            foreach (var patient in patientBatch)
             {
-                var recordDate = DateTime.Now.AddDays(-random.Next(1, 1095)); // Up to 3 years in the past
-                var toothNum = random.Next(1, 32);
-
-                var record = new PatientRecord
+                // Each patient gets 1-3 records (smaller number for testing)
+                int recordCount = random.Next(1, 4);
+                
+                for (int i = 0; i < recordCount; i++)
                 {
-                    PatientId = patient.Id,
-                    RecordDate = recordDate,
-                    RecordType = procedures[random.Next(procedures.Length)],
-                    Description = $"Patient visit on {recordDate.ToString("MM/dd/yyyy")}",
-                    Treatment = $"{treatments[random.Next(treatments.Length)]} {(random.Next(0, 2) == 0 ? toothNum.ToString() : "")}",
-                    Diagnosis = i % 3 == 0 ? "Healthy teeth and gums" :
-                               i % 3 == 1 ? $"Small cavity on tooth #{toothNum}" :
-                               "Mild gingivitis",
-                    Prescription = i % 4 == 0 ? "None" :
-                                  i % 4 == 1 ? "Antibiotics for 7 days" :
-                                  i % 4 == 2 ? "Pain medication as needed" :
-                                  "Medicated mouth rinse twice daily",
-                    Notes = $"Patient {(random.Next(0, 2) == 0 ? "reported" : "did not report")} sensitivity. " +
-                           $"Follow up {(random.Next(0, 2) == 0 ? "scheduled" : "recommended")} in {random.Next(1, 12)} months.",
-                    DentistName = dentists[random.Next(dentists.Length)]
-                };
-
-                records.Add(record);
+                    // Create a DateTime and explicitly convert it to UTC
+                    var localDate = DateTime.Now.AddDays(-random.Next(1, 1095));
+                    var recordDate = DateTime.SpecifyKind(localDate, DateTimeKind.Utc);
+                    
+                    var toothNum = random.Next(1, 32);
+                    
+                    try
+                    {
+                        var record = new PatientRecord
+                        {
+                            PatientId = patient.Id,
+                            RecordDate = DateTime.UtcNow.AddDays(-random.Next(1, 1095)), // Create directly as UTC
+                            RecordType = procedures[random.Next(procedures.Length)],
+                            Description = $"Patient visit on {recordDate:MM/dd/yyyy}",
+                            Treatment = $"{treatments[random.Next(treatments.Length)]} {(random.Next(0, 2) == 0 ? toothNum.ToString() : "")}",
+                            Diagnosis = i % 3 == 0 ? "Healthy teeth and gums" : 
+                                       i % 3 == 1 ? $"Small cavity on tooth #{toothNum}" : 
+                                       "Mild gingivitis",
+                            Prescription = i % 4 == 0 ? "None" : 
+                                          i % 4 == 1 ? "Antibiotics for 7 days" : 
+                                          i % 4 == 2 ? "Pain medication as needed" : 
+                                          "Medicated mouth rinse twice daily",
+                            Notes = $"Patient {(random.Next(0, 2) == 0 ? "reported" : "did not report")} sensitivity.",
+                            DentistName = dentists[random.Next(dentists.Length)]
+                        };
+                        
+                        batchRecords.Add(record);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error creating record: {ex.Message}");
+                        failCount++;
+                    }
+                }
+            }
+            
+            try
+            {
+                // Add the smaller batch
+                await _context.PatientRecords.AddRangeAsync(batchRecords);
+                await _context.SaveChangesAsync();
+                successCount += batchRecords.Count;
+                Console.WriteLine($"Added batch of {batchRecords.Count} records successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to add batch: {ex.Message}");
+                
+                // Fall back to adding records one by one if batch fails
+                foreach (var record in batchRecords)
+                {
+                    try
+                    {
+                        _context.PatientRecords.Add(record);
+                        await _context.SaveChangesAsync();
+                        successCount++;
+                    }
+                    catch
+                    {
+                        failCount++;
+                    }
+                }
             }
         }
-
-        // Add all records in a batch
-        await _context.PatientRecords.AddRangeAsync(records);
-        await _context.SaveChangesAsync();
-
-        Console.WriteLine($"Added {records.Count} sample dental records for {patients.Count} patients");
+        
+        Console.WriteLine($"Added {successCount} sample dental records successfully, {failCount} failed");
     }
 
     //////////////////////////////
@@ -137,6 +156,12 @@ public class PatientRecordService
         if (patient == null)
         {
             throw new KeyNotFoundException($"Patient with ID {record.PatientId} not found");
+        }
+
+        // Ensure DateTime is UTC
+        if (record.RecordDate.Kind != DateTimeKind.Utc)
+        {
+            record.RecordDate = DateTime.SpecifyKind(record.RecordDate, DateTimeKind.Utc);
         }
 
         await _context.PatientRecords.AddAsync(record);
@@ -214,7 +239,7 @@ public class PatientRecordService
                 patient.FirstName,
                 patient.LastName,
                 patient.DateOfBirth,
-                // Include only the patient fields you need
+                // Include only necessary fields
             }
         });
     }
