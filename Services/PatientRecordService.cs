@@ -8,31 +8,39 @@ using System.Threading.Tasks;
 
 namespace DentalPatientApp.Services;
 
+/// <summary>
+/// Service for managing dental patient records stored in PostgreSQL.
+/// Provides methods for creating, retrieving, updating, and deleting dental records,
+/// as well as automatic initialization of sample data.
+/// </summary>
+
 public class PatientRecordService
 {
     private readonly DentalDbContext _context;
     private readonly PatientService _patientService;
 
+   
     public PatientRecordService(DentalDbContext context, PatientService patientService)
     {
-        _context = context;
-        _patientService = patientService;
+        _context = context; // database context for accessing PostgreSQL
+        _patientService = patientService; // service for accessing patient information from LiteDB.
 
-        // Check if we need to initialize sample data
-         try 
+        // Check if we need to initialize sample data (aka, first run)
+        try
         {
             Console.WriteLine("About to initialize sample data...");
-            InitializeSampleDataAsync().Wait();
+            InitializeSampleDataAsync().Wait();  
             Console.WriteLine("Sample data initialization complete or skipped");
         }
+        // Unlikely to need this as one successful run should be enough, but good "just in case"
         catch (Exception ex)
         {
             Console.WriteLine($"ERROR initializing sample data: {ex.Message}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
-            // Consider still allowing the service to function even if initialization fails
         }
     }
 
+    /// Function for automatically initializing sample data if the database is empty.
     private async Task InitializeSampleDataAsync()
     {
         // Skip if we already have records
@@ -40,50 +48,50 @@ public class PatientRecordService
         Console.WriteLine($"Database already has records: {hasRecords}");
         if (hasRecords)
             return;
-    
-        // Get all patients from LiteDB
+
+        // Get all patients from LiteDB. We need to be able to properly vet whether a patient exists before giving them a record.
         var patients = _patientService.GetAllPatients().ToList();
         Console.WriteLine($"Found {patients.Count} patients in LiteDB");
         if (!patients.Any())
             return;
-            
-        // For sample data generation
+
+        // We need random number gen for sample data generation
         var random = new Random();
-        
+
         // Common dental procedures, dentists, treatments
-        var procedures = new[] { "Regular Checkup", "Teeth Cleaning", "Fluoride Treatment", 
-            "Dental X-Ray", "Cavity Filling", "Root Canal", "Crown Placement", "Bridge Work", 
+        var procedures = new[] { "Regular Checkup", "Teeth Cleaning", "Fluoride Treatment",
+            "Dental X-Ray", "Cavity Filling", "Root Canal", "Crown Placement", "Bridge Work",
             "Tooth Extraction", "Wisdom Tooth Removal", "Gum Treatment", "Teeth Whitening" };
-            
-        var dentists = new[] { "Dr. Sarah Johnson", "Dr. Michael Chen", "Dr. Emily Rodriguez", 
+
+        var dentists = new[] { "Dr. Sarah Johnson", "Dr. Michael Chen", "Dr. Emily Rodriguez",
             "Dr. David Kim", "Dr. Lisa Patel", "Dr. Robert Williams" };
-            
+
         var treatments = new[] { "Complete cleaning with fluoride application",
             "Filling applied to affected area", "Pain management and antibiotics prescribed",
             "Crown fitted and adjusted", "X-rays taken of full mouth", "Root canal performed on tooth #" };
-    
+
         int successCount = 0;
         int failCount = 0;
-        
+
         // Process patients in smaller batches (no more than 10 patients at a time)
         foreach (var patientBatch in patients.Chunk(10))
         {
             // Create a smaller batch of records
             var batchRecords = new List<PatientRecord>();
-            
+
             foreach (var patient in patientBatch)
             {
                 // Each patient gets 1-3 records (smaller number for testing)
                 int recordCount = random.Next(1, 4);
-                
+
                 for (int i = 0; i < recordCount; i++)
                 {
-                    // Create a DateTime and explicitly convert it to UTC
+                    // Create a DateTime and explicitly convert it to UTC.
                     var localDate = DateTime.Now.AddDays(-random.Next(1, 1095));
                     var recordDate = DateTime.SpecifyKind(localDate, DateTimeKind.Utc);
-                    
+
                     var toothNum = random.Next(1, 32);
-                    
+
                     try
                     {
                         var record = new PatientRecord
@@ -93,17 +101,17 @@ public class PatientRecordService
                             RecordType = procedures[random.Next(procedures.Length)],
                             Description = $"Patient visit on {recordDate:MM/dd/yyyy}",
                             Treatment = $"{treatments[random.Next(treatments.Length)]} {(random.Next(0, 2) == 0 ? toothNum.ToString() : "")}",
-                            Diagnosis = i % 3 == 0 ? "Healthy teeth and gums" : 
-                                       i % 3 == 1 ? $"Small cavity on tooth #{toothNum}" : 
+                            Diagnosis = i % 3 == 0 ? "Healthy teeth and gums" :
+                                       i % 3 == 1 ? $"Small cavity on tooth #{toothNum}" :
                                        "Mild gingivitis",
-                            Prescription = i % 4 == 0 ? "None" : 
-                                          i % 4 == 1 ? "Antibiotics for 7 days" : 
-                                          i % 4 == 2 ? "Pain medication as needed" : 
+                            Prescription = i % 4 == 0 ? "None" :
+                                          i % 4 == 1 ? "Antibiotics for 7 days" :
+                                          i % 4 == 2 ? "Pain medication as needed" :
                                           "Medicated mouth rinse twice daily",
                             Notes = $"Patient {(random.Next(0, 2) == 0 ? "reported" : "did not report")} sensitivity.",
                             DentistName = dentists[random.Next(dentists.Length)]
                         };
-                        
+
                         batchRecords.Add(record);
                     }
                     catch (Exception ex)
@@ -113,7 +121,7 @@ public class PatientRecordService
                     }
                 }
             }
-            
+
             try
             {
                 // Add the smaller batch
@@ -125,7 +133,7 @@ public class PatientRecordService
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to add batch: {ex.Message}");
-                
+
                 // Fall back to adding records one by one if batch fails
                 foreach (var record in batchRecords)
                 {
@@ -142,13 +150,16 @@ public class PatientRecordService
                 }
             }
         }
-        
+
         Console.WriteLine($"Added {successCount} sample dental records successfully, {failCount} failed");
     }
 
     //////////////////////////////
     /// Patient Record Methods ///
     //////////////////////////////
+    
+    /// Add new patient record to the database.
+    /// Verifies patient exists before adding the record and ensures dates are in UTC format.
     public async Task<PatientRecord> AddRecordAsync(PatientRecord record)
     {
         // Verify that the patient exists before adding a record
@@ -169,6 +180,7 @@ public class PatientRecordService
         return record;
     }
 
+    /// Get all patient records for a specific patient, ordered by record date descending. ///
     public async Task<List<PatientRecord>> GetPatientRecordsAsync(Guid patientId)
     {
         return await _context.PatientRecords
@@ -177,11 +189,13 @@ public class PatientRecordService
             .ToListAsync();
     }
 
+    /// Get a specific patient record by its ID. ///
     public async Task<PatientRecord?> GetRecordAsync(int recordId)
     {
         return await _context.PatientRecords.FindAsync(recordId);
     }
 
+    /// Update an existing patient record. ///
     public async Task<PatientRecord?> UpdateRecordAsync(PatientRecord record)
     {
         var existingRecord = await _context.PatientRecords.FindAsync(record.Id);
@@ -203,6 +217,7 @@ public class PatientRecordService
         return existingRecord;
     }
 
+    /// Delete a patient record by its ID. Returns true if deleted, false if not found. ///
     public async Task<bool> DeleteRecordAsync(int recordId)
     {
         var record = await _context.PatientRecords.FindAsync(recordId);
@@ -215,7 +230,8 @@ public class PatientRecordService
         await _context.SaveChangesAsync();
         return true;
     }
-    
+
+    /// Get patient records with details from both PostgreSQL and LiteDB.
     public async Task<IEnumerable<dynamic>> GetPatientRecordsWithDetailsAsync(Guid patientId)
     {
         // Get patient from LiteDB
@@ -238,8 +254,7 @@ public class PatientRecordService
                 patient.Id,
                 patient.FirstName,
                 patient.LastName,
-                patient.DateOfBirth,
-                // Include only necessary fields
+                patient.DateOfBirth
             }
         });
     }

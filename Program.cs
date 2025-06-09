@@ -5,11 +5,12 @@ using DentalPatientApp.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Any;
 
+// Create a new WebApplication builder with default configuration
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container. //
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Register essential services for API documentation
+builder.Services.AddEndpointsApiExplorer(); // Enables API endpoint discovery
+builder.Services.AddSwaggerGen(); // Generates Swagger documentation
 
 // Configure the LiteDB path //
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -29,6 +30,7 @@ builder.Services.AddScoped<PatientRecordService>();
 
 var app = builder.Build();
 
+// Initialize PatientRecordService immediately to generate sample data
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -46,14 +48,14 @@ using (var scope = app.Services.CreateScope())
 // Configure the HTTP request pipeline. //
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwagger(); // Generate OpenAPI specification
+    app.UseSwaggerUI(); // Serve Swagger UI for API testing
 }
 
 app.UseHttpsRedirection();
 
 ///////////////////////////////////
-// Patient API endpoints (LiteDB //
+// Patient API endpoints, LiteDB //
 ///////////////////////////////////
 
 /// Get All Patients ///
